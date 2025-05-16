@@ -2,20 +2,25 @@ import topLevel from './snapshots/toplevel.snapshot.json';
 import { sublimeSearch } from './sublimeSearch';
 
 describe('sublimeSearch', () => {
-	const testCases = [{ filter: 'agent', expectedOrder: ['Magento 2', 'AI Agent'] }];
+	describe('search finds specific matches first', () => {
+		// Note that this only tests the order of the specified matches
+		// Further results may appear after the listed ones
+		const testCases: Array<[string, string[]]> = [
+			['set', ['Edit Fields (Set)']],
+			['agent', ['AI Agent', 'Magento 2']],
+		];
 
-	test.each(testCases)(
-		'should return results in the correct order for filter "$filter"',
-		({ filter, expectedOrder }) => {
-			const results = sublimeSearch(filter, topLevel, [
-				{ key: 'properties.displayName', weight: 1.3 },
-				{ key: 'properties.codex.alias', weight: 1 },
-			]);
+		test.each(testCases)(
+			'should return at least "$expectedOrder" for filter "$filter"',
+			(filter, expectedOrder) => {
+				// These match the weights in the production use case
+				const results = sublimeSearch(filter, topLevel);
 
-			const resultNames = results.map((result) => result.item.properties.displayName);
-			expectedOrder.forEach((expectedName, index) => {
-				expect(resultNames[index]).toBe(expectedName);
-			});
-		},
-	);
+				const resultNames = results.map((result) => result.item.properties.displayName);
+				expectedOrder.forEach((expectedName, index) => {
+					expect(resultNames[index]).toBe(expectedName);
+				});
+			},
+		);
+	});
 });
