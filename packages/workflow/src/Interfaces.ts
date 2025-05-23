@@ -571,6 +571,8 @@ export interface IGetNodeParameterOptions {
 	extractValue?: boolean;
 	// get raw value of parameter with unresolved expressions
 	rawExpressions?: boolean;
+	// skip validation of parameter
+	skipValidation?: boolean;
 }
 
 namespace ExecuteFunctions {
@@ -701,6 +703,16 @@ export interface BinaryHelperFunctions {
 export type DeduplicationScope = 'node' | 'workflow';
 export type DeduplicationItemTypes = string | number;
 export type DeduplicationMode = 'entries' | 'latestIncrementalKey' | 'latestDate';
+
+export interface IProcessedDataLatest {
+	mode: DeduplicationMode;
+	data: DeduplicationItemTypes;
+}
+
+export interface IProcessedDataEntries {
+	mode: DeduplicationMode;
+	data: DeduplicationItemTypes[];
+}
 
 export interface IDeduplicationOutput {
 	new: DeduplicationItemTypes[];
@@ -980,6 +992,7 @@ export type ISupplyDataFunctions = ExecuteFunctions.GetNodeParameterFn &
 		| 'sendMessageToUI'
 		| 'helpers'
 	> & {
+		getNextRunIndex(): number;
 		continueOnFail(): boolean;
 		evaluateExpression(expression: string, itemIndex: number): NodeParameterValueType;
 		getWorkflowDataProxy(itemIndex: number): IWorkflowDataProxyData;
@@ -1133,6 +1146,7 @@ export interface INode {
 	credentials?: INodeCredentials;
 	webhookId?: string;
 	extendsCredential?: string;
+	rewireOutputLogTo?: NodeConnectionType;
 }
 
 export interface IPinData {
@@ -1377,7 +1391,7 @@ export interface IDisplayOptions {
 	};
 	show?: {
 		'@version'?: Array<number | DisplayCondition>;
-		'@tool'?: [boolean];
+		'@tool'?: boolean[];
 		[key: string]: Array<NodeParameterValue | DisplayCondition> | undefined;
 	};
 
@@ -1430,6 +1444,11 @@ export interface INodePropertyModeTypeOptions {
 	searchListMethod?: string; // Supported by: options
 	searchFilterRequired?: boolean;
 	searchable?: boolean;
+	allowNewResource?: {
+		label: string;
+		defaultName: string;
+		method: string;
+	};
 }
 
 export interface INodePropertyMode {
@@ -1479,6 +1498,7 @@ export interface INodePropertyOptions {
 	description?: string;
 	routing?: INodePropertyRouting;
 	outputConnectionType?: NodeConnectionType;
+	inputSchema?: any;
 }
 
 export interface INodeListSearchItems extends INodePropertyOptions {
@@ -2149,9 +2169,6 @@ export interface IRunExecutionData {
 	waitTill?: Date;
 	pushRef?: string;
 
-	/** Whether this execution was started by a test webhook call. */
-	isTestWebhook?: boolean;
-
 	/** Data needed for a worker to run a manual execution. */
 	manualData?: Pick<
 		IWorkflowExecutionDataProcess,
@@ -2249,6 +2266,7 @@ export interface IWorkflowBase {
 	id: string;
 	name: string;
 	active: boolean;
+	isArchived: boolean;
 	createdAt: Date;
 	startedAt?: Date;
 	updatedAt: Date;
@@ -2295,6 +2313,7 @@ export interface IWorkflowExecutionDataProcess {
 		name: string;
 		data?: ITaskData;
 	};
+	agentRequest?: AiAgentRequest;
 }
 
 export interface ExecuteWorkflowOptions {
@@ -2333,6 +2352,14 @@ type AiEventPayload = {
 	workflowId?: string;
 	nodeType?: string;
 };
+
+// Used to transport an agent request for partial execution
+export interface AiAgentRequest {
+	query: string | INodeParameters;
+	tool: {
+		name: string;
+	};
+}
 
 export interface IWorkflowExecuteAdditionalData {
 	credentialsHelper: ICredentialsHelper;
@@ -2433,11 +2460,14 @@ export interface WorkflowTestData {
 		};
 	};
 	output: {
+		assertBinaryData?: boolean;
 		nodeExecutionOrder?: string[];
+		nodeExecutionStack?: IExecuteData[];
 		testAllOutputs?: boolean;
 		nodeData: {
 			[key: string]: any[][];
 		};
+		error?: string;
 	};
 	nock?: {
 		baseUrl: string;
@@ -2455,6 +2485,7 @@ export interface WorkflowTestData {
 		mode: WorkflowExecuteMode;
 		input: INodeExecutionData;
 	};
+	credentials?: Record<string, ICredentialDataDecryptedObject>;
 }
 
 export type LogLevel = (typeof LOG_LEVELS)[number];
@@ -2561,6 +2592,7 @@ export interface INodeGraphItem {
 	workflow_id?: string; //@n8n/n8n-nodes-langchain.toolWorkflow and n8n-nodes-base.executeWorkflow
 	runs?: number;
 	items_total?: number;
+	metric_names?: string[];
 }
 
 export interface INodeNameIndex {
@@ -2571,6 +2603,7 @@ export interface INodesGraphResult {
 	nodeGraph: INodesGraph;
 	nameIndices: INodeNameIndex;
 	webhookNodeNames: string[];
+	evaluationTriggerNodeNames: string[];
 }
 
 export interface FeatureFlags {
@@ -2619,7 +2652,7 @@ export interface ExecutionSummary {
 	retrySuccessId?: string | null;
 	waitTill?: Date;
 	createdAt: Date;
-	startedAt: Date;
+	startedAt: Date | null;
 	stoppedAt?: Date;
 	workflowId: string;
 	workflowName?: string;
@@ -2655,7 +2688,7 @@ export interface ResourceMapperFields {
 export interface WorkflowInputsData {
 	fields: ResourceMapperField[];
 	dataMode: string;
-	subworkflowInfo?: { id?: string };
+	subworkflowInfo?: { workflowId?: string; triggerId?: string };
 }
 
 export interface ResourceMapperField {
@@ -2845,8 +2878,6 @@ export interface ICheckProcessedContextData {
 		active: boolean;
 	};
 }
-
-export type ExpressionEvaluatorType = 'tmpl' | 'tournament';
 
 export type N8nAIProviderType = 'openai' | 'unknown';
 
